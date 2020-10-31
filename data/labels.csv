@@ -1,6 +1,0 @@
-id,name,description,resource_type
-0de1ed51,liquid,"funds can be released (almost) immediately",Account
-4fe0e2d2,long-term,"funds or accounts designed for retirement",Account
-12c5ff9b,dedicated,"accounts which are tailored to specific cause; example: BSU",Account
-e25413c2,semi-liquid,"can be released in a short period of time (days or weeks)",Account
-1f74244f,investment,"pure investment account (excludes retirement investments)",Account
