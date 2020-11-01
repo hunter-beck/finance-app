@@ -82,14 +82,10 @@ record_filter_form = dbc.Form(
 label_filter_form = dbc.Form()
 
 ### SIDEBAR ###
-side_bar = dbc.Card(
+side_bar = html.Div(
     [
-        dbc.CardBody(
-            [
-                data_type_buttons,
-                html.Div(id='sidebar-content')
-            ]
-        ),
+        data_type_buttons,
+        html.Div(id='sidebar-content')
     ],
     style={'height':'100vh'}
 )
@@ -280,7 +276,10 @@ create_record_modal = dbc.Modal(
 body = html.Div(
     dbc.Row(
         [
-            dbc.Col(side_bar, width=3),
+            dbc.Col(
+                side_bar, 
+                className='m-2',
+                width=3),
             dbc.Col(
                 [
                     dbc.Row(
@@ -303,7 +302,7 @@ temp_val_store = dcc.Store(id='temp-val-store')
 data_type_store = dcc.Store(id='data-type-store')
 
 ### LAYOUT ###
-explore_app_layout = html.Div([
+layout = html.Div([
     data_type_store, 
     create_account_modal, create_label_modal, create_record_modal, 
     body
@@ -369,7 +368,6 @@ def close_modal(create_n, close_account_n, close_label_n, close_record_n,
     
     elif data_type_store == 'records':
         if trigger_button == 'create-create-record-modal':
-            print(record_date)
             new_record = Record(
                 account_id=record_account,
                 currency=record_currency,
@@ -402,20 +400,16 @@ def accounts_selection(account_n, record_n, label_n,
     
     ctx = callback_context
     trigger_button = ctx.triggered[0]['prop_id'].split('.')[0]
-    print(trigger_button)
 
     if 'account' in trigger_button:
-        print('account')
         accounts_df = client.accounts.list().to_pandas()
         data, columns = table_data_columns_formatter(accounts_df)
         return columns, data, account_filter_form, 'accounts'
     elif 'record' in trigger_button:
-        print('record')
         records_df = client.records.list().to_pandas()
         data, columns = table_data_columns_formatter(records_df)
         return columns, data, record_filter_form, 'records'
     elif 'label' in trigger_button:
-        print('label')
         labels_df = client.labels.list().to_pandas()
         data, columns = table_data_columns_formatter(labels_df)
         return columns, data, label_filter_form, 'labels'

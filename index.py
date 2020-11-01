@@ -5,7 +5,7 @@ import yaml
 from dash.dependencies import State, Input, Output
 
 from app import app
-from apps import test_app, explore_app
+from apps import test_app, explore, analyze
 
 with open('config.yml') as file:
     config = yaml.load(file, Loader=yaml.FullLoader)
@@ -22,6 +22,7 @@ for link in config['navbar']:
 navbar = dbc.NavbarSimple(
     children=[
         dbc.NavItem(dbc.NavLink("Explore", href="explore")),
+        dbc.NavItem(dbc.NavLink("Analyze", href="analyze")),
         dbc.DropdownMenu(
             children=link_list,
             nav=True,
@@ -47,9 +48,11 @@ app.layout = html.Div([
 def display_page(pathname):
     
     if pathname == '/explore':
-        return explore_app.explore_app_layout
+        return explore.layout
     elif pathname == '/test':
-        return test_app.test_app_layout
+        return test_app.layout
+    elif pathname == '/analyze':
+        return analyze.layout
     else:
         return '404'
         
