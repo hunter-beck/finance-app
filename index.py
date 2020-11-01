@@ -31,8 +31,6 @@ navbar = dbc.NavbarSimple(
         ),
     ],
     brand="Finance Tool",
-    color="primary",
-    dark=True,
     fluid=True
 )
 

@@ -2,7 +2,7 @@ app:
   host: finance-app.com
   debug: True
 database:
-  file_path: data/db.sqlite3
+  file_path: data/db_test.sqlite3
 navbar:
   SpareBank1: https://www.sparebank1.no/ostlandet/nettbank-privat/oversikt
   Chase: https://secure05b.chase.com/web/auth/dashboard#/dashboard/accounts/summary/dda;params=dda,257633572
