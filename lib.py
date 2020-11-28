@@ -7,7 +7,8 @@ def create_total_col(df, balance_col):
         df_subset = df[df['account_id']==account_id][[balance_col,'date']].set_index('date')    
         restructured_df[account_id] = df_subset
 
-    restructured_df.interpolate(inplace=True)
+    restructured_df.sort_index(inplace=True)
+    restructured_df.interpolate(method='time', inplace=True)
 
     restructured_df['total'] = restructured_df.sum(axis=1)
     restructured_df['name_account'] = 'Total'

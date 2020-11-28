@@ -38,7 +38,7 @@ currency_options = [{'label': code, 'value':code} for code in currency_codes]
 ### RECORDS DATA STORE ###
 compiled_records_df = compile_records(
     client=client,
-    records=records.to_pandas(currency=config['app']['default_currency']),
+    records=records.convert_currency(currency=config['app']['default_currency']).to_pandas(),
     accounts=accounts,
     labels=labels
 )
@@ -115,7 +115,8 @@ side_bar = html.Div(
 graph_type_selection = dbc.ButtonGroup(
     [
         dbc.Button("Plot", id='plot-graph-button', color='info'), 
-        dbc.Button("Tree", id='tree-graph-button', color='info')
+        dbc.Button("Tree", id='tree-graph-button', color='info'),
+        dbc.Button("Map", id='map-graph-button', color='info')
     ]
 )
 
@@ -162,7 +163,9 @@ def clear_filters(click):
      Input('plot-graph-button', 'n_clicks'),
      Input('plot-graph-button', 'n_clicks_timestamp'),
      Input('tree-graph-button', 'n_clicks'),
-     Input('tree-graph-button', 'n_clicks_timestamp')],
+     Input('tree-graph-button', 'n_clicks_timestamp'),
+     Input('map-graph-button', 'n_clicks'),
+     Input('map-graph-button', 'n_clicks_timestamp')],
     [State('data-store','data'),
      State('account-dropdown', 'value'),
      State('country-code-dropdown', 'value'),
@@ -172,7 +175,7 @@ def clear_filters(click):
      State('currency-dropdown', 'value')]
 )
 def update_graph(filter_click, plot_click, plot_timestamp, tree_click, tree_timestamp,
-                 data_store, account_ids, country_codes, 
+                 map_click, map_timestamp, data_store, account_ids, country_codes, 
                  label_ids, date_start, date_end, currency_code):
     
     ctx = callback_context
@@ -208,7 +211,7 @@ def update_graph(filter_click, plot_click, plot_timestamp, tree_click, tree_time
     compiled_df = compiled_df[account_filter & country_filter & label_filter & start_filter & end_filter]        
 
     graph_labels={
-        f'balance_{currency_code}':f'Balance ({currency_code})', 
+        f'balance':f'Balance ({currency_code})', 
         'name_account':'Account',
         'date':'Date'
     }
@@ -221,7 +224,7 @@ def update_graph(filter_click, plot_click, plot_timestamp, tree_click, tree_time
         fig = px.treemap(
             current_balances,
             names='name_account',
-            values=f'balance_{currency_code}',
+            values=f'balance',
             path=['name_label','name_account'],
             labels=graph_labels
         )
@@ -230,20 +233,20 @@ def update_graph(filter_click, plot_click, plot_timestamp, tree_click, tree_time
     
     def create_plot(compiled_df, currency_code):
         
-        compiled_df = create_total_col(compiled_df, f'balance_{currency_code}')
+        compiled_df = create_total_col(compiled_df, 'balance')
     
         fig = px.line(
             compiled_df.sort_values('date'),
             x='date',
-            y=f'balance_{currency_code}',
+            y=f'balance',
             color='name_account',
-            labels=graph_labels
+            labels=graph_labels,
         )
         
         fig.update_traces(mode='markers+lines')
         
-        return fig
-
+        return fig    
+    
     if trigger_button == 'tree-graph-button':
         return create_treemap(compiled_df, currency_code)
     
@@ -276,7 +279,7 @@ def update_data_store_currency(currency):
     
     compiled_records_df = compile_records(
         client=client, 
-        records=records.to_pandas(currency=currency),
+        records=records.convert_currency(currency=currency).to_pandas(),
         accounts=accounts,
         labels=labels,
     )
