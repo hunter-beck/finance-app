@@ -12,6 +12,7 @@ from finance.client import Client
 from finance.client.data_classes.accounts import Account
 from finance.client.data_classes.records import Record, RecordList
 from finance.client.data_classes.labels import Label
+from lib import create_total_col, compile_records
 
 from app import app
 
@@ -20,10 +21,12 @@ with open('config.yml') as file:
 
 client = Client(db_path=config['database']['file_path']) 
 
+records = client.records.list()
+
 accounts = client.accounts.list()
 account_options = [{'label':account.name, 'value':account.id} for account in accounts]
 
-country_codes = client._country_codes
+country_codes = list(set([account.country_code for account in accounts]))
 country_code_options = [{'label':code, 'value': code} for code in country_codes]
 
 labels = client.labels.list()
@@ -32,27 +35,15 @@ labels_options = [{'label':label.name, 'value':label.id} for label in labels]
 currency_codes = client._currency_codes
 currency_options = [{'label': code, 'value':code} for code in currency_codes]
 
-
-### DATA STORE ###
-records = client.records.list().to_pandas(currency=config['app']['default_currency'])
-
-compiled_df = records.merge(
-    accounts.to_pandas(), 
-    how='left', 
-    left_on='account_id', 
-    right_on='id', 
-    suffixes=('_record', '_account')
+### RECORDS DATA STORE ###
+compiled_records_df = compile_records(
+    client=client,
+    records=records.to_pandas(currency=config['app']['default_currency']),
+    accounts=accounts,
+    labels=labels
 )
 
-compiled_df = compiled_df.merge(
-    labels.to_pandas(), 
-    how='left', 
-    left_on='label_id', 
-    right_on='id', 
-    suffixes=('_account', '_label')
-)
-
-initial_data_store = compiled_df.to_json()
+initial_data_store = compiled_records_df.to_json()
 
 data_store = dcc.Store(id='data-store', data=initial_data_store)
 
@@ -70,8 +61,7 @@ currency_dropdown = dcc.Dropdown(
     placeholder='Currency',
     className='mb-2',
     options=currency_options,
-    value=config['app']['default_currency'],
-    disabled=True
+    value=config['app']['default_currency']
 )
 
 country_code_dropdown = dcc.Dropdown(
@@ -100,6 +90,13 @@ filter_button = dbc.Button(
     color='primary'
 )
 
+clear_filter_button = dbc.Button(
+    'Clear',
+    id='clear-filter-button',
+    color='light',
+    className='ml-2'
+)
+
 ### SIDEBAR ###
 side_bar = html.Div(
     [
@@ -108,7 +105,8 @@ side_bar = html.Div(
         country_code_dropdown,
         label_dropdown,
         date_range,
-        filter_button
+        filter_button, 
+        clear_filter_button
     ],
     style={'height':'100vh'}
 )
@@ -146,32 +144,76 @@ body = html.Div(
 layout = html.Div([body, data_store])
 
 @app.callback(
+    [Output('account-dropdown', 'value'),
+     Output('country-code-dropdown', 'value'),
+     Output('label-dropdown', 'value'),
+     Output('date-picker-range', 'start_date'),
+     Output('date-picker-range', 'end_date'),
+     Output('currency-dropdown', 'value')],
+    [Input('clear-filter-button', 'n_clicks')],
+)
+def clear_filters(click):
+    
+    return None, None, None, None, None, config['app']['default_currency']
+
+@app.callback(
     Output('graph', 'figure'),
     [Input('filter-button', 'n_clicks'),
      Input('plot-graph-button', 'n_clicks'),
-     Input('tree-graph-button', 'n_clicks')],
+     Input('plot-graph-button', 'n_clicks_timestamp'),
+     Input('tree-graph-button', 'n_clicks'),
+     Input('tree-graph-button', 'n_clicks_timestamp')],
     [State('data-store','data'),
      State('account-dropdown', 'value'),
      State('country-code-dropdown', 'value'),
      State('label-dropdown', 'value'),
      State('date-picker-range', 'start_date'),
-     State('date-picker-range', 'end_date')]
+     State('date-picker-range', 'end_date'),
+     State('currency-dropdown', 'value')]
 )
-def update_graph(filter_click, plot_click, tree_click, 
-                 data_store, account_ids, country_codes, label_ids, date_start, date_end):
+def update_graph(filter_click, plot_click, plot_timestamp, tree_click, tree_timestamp,
+                 data_store, account_ids, country_codes, 
+                 label_ids, date_start, date_end, currency_code):
     
     ctx = callback_context
     trigger_button = ctx.triggered[0]['prop_id'].split('.')[0]
 
     compiled_df = pd.read_json(data_store)
+    
+    if account_ids:
+        account_filter = compiled_df['account_id'].isin(account_ids)
+    else:
+        account_filter = pd.Series([True]*len(compiled_df))
+        
+    if country_codes:
+        country_filter = compiled_df['country_code'].isin(country_codes)
+    else:
+        country_filter = pd.Series([True]*len(compiled_df))
+        
+    if label_ids:
+        label_filter = compiled_df['label_id'].isin(label_ids)
+    else:
+        label_filter = pd.Series([True]*len(compiled_df))
+        
+    if date_start:
+        start_filter = compiled_df['date'] > date_start
+    else:
+        start_filter = pd.Series([True]*len(compiled_df))
+        
+    if date_end:
+        end_filter = compiled_df['date'] < date_end
+    else:
+        end_filter = pd.Series([True]*len(compiled_df))
+        
+    compiled_df = compiled_df[account_filter & country_filter & label_filter & start_filter & end_filter]        
 
     graph_labels={
-        'balance_USD':'Balance (USD)', 
+        f'balance_{currency_code}':f'Balance ({currency_code})', 
         'name_account':'Account',
         'date':'Date'
     }
 
-    if trigger_button == 'tree-graph-button':
+    def create_treemap(compiled_df, currency_code):
         
         most_recent_records = compiled_df[['name_account', 'date']].groupby(['name_account'], as_index=False).max()
         current_balances = most_recent_records.merge(compiled_df, on=['name_account','date'], how='left')
@@ -179,23 +221,64 @@ def update_graph(filter_click, plot_click, tree_click,
         fig = px.treemap(
             current_balances,
             names='name_account',
-            values='balance_USD',
+            values=f'balance_{currency_code}',
             path=['name_label','name_account'],
             labels=graph_labels
         )
-
-    else:
+        
+        return fig
+    
+    def create_plot(compiled_df, currency_code):
+        
+        compiled_df = create_total_col(compiled_df, f'balance_{currency_code}')
     
         fig = px.line(
-            compiled_df,
+            compiled_df.sort_values('date'),
             x='date',
-            y='balance_USD',
+            y=f'balance_{currency_code}',
             color='name_account',
             labels=graph_labels
         )
-    
+        
         fig.update_traces(mode='markers+lines')
         
+        return fig
 
-    return fig
+    if trigger_button == 'tree-graph-button':
+        return create_treemap(compiled_df, currency_code)
+    
+    elif trigger_button == 'filter-button':
+        
+        if tree_timestamp == None and plot_timestamp == None:
+            return create_plot(compiled_df, currency_code)
+        
+        elif tree_timestamp == None or plot_timestamp == None:
+            if tree_timestamp:
+                return create_treemap(compiled_df, currency_code)
+            else:
+                return create_plot(compiled_df, currency_code)
+        
+        elif tree_timestamp > plot_timestamp:
+            return create_treemap(compiled_df, currency_code)
+        
+        else:
+            return create_plot(compiled_df, currency_code)
+        
+    else:
+        return create_plot(compiled_df, currency_code)
+    
 
+@app.callback(
+    Output('data-store','data'),
+    [Input('currency-dropdown', 'value')],
+)
+def update_data_store_currency(currency):
+    
+    compiled_records_df = compile_records(
+        client=client, 
+        records=records.to_pandas(currency=currency),
+        accounts=accounts,
+        labels=labels,
+    )
+    
+    return compiled_records_df.to_json()

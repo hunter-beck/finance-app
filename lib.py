@@ -17,3 +17,23 @@ def create_total_col(df, balance_col):
     df = df.append(restructured_df[['name_account', 'date', balance_col]])
     
     return df
+
+def compile_records(client, records, accounts, labels):
+
+    compiled_df = records.merge(
+        accounts.to_pandas(), 
+        how='left', 
+        left_on='account_id', 
+        right_on='id', 
+        suffixes=('_record', '_account')
+    )
+
+    compiled_df = compiled_df.merge(
+        labels.to_pandas(), 
+        how='left', 
+        left_on='label_id', 
+        right_on='id', 
+        suffixes=('_account', '_label')
+    )
+    
+    return compiled_df
