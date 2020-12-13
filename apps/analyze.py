@@ -19,7 +19,7 @@ from app import app
 with open('config.yml') as file:
     config = yaml.load(file, Loader=yaml.FullLoader)
 
-client = Client(db_path=config['database']['file_path']) 
+client = Client(**config['database']) 
 
 records = client.records.list()
 
@@ -216,7 +216,7 @@ def update_graph(filter_click, plot_click, plot_timestamp, tree_click, tree_time
         'date':'Date'
     }
 
-    def create_treemap(compiled_df, currency_code):
+    def create_treemap(compiled_df):
         
         most_recent_records = compiled_df[['name_account', 'date']].groupby(['name_account'], as_index=False).max()
         current_balances = most_recent_records.merge(compiled_df, on=['name_account','date'], how='left')
@@ -231,7 +231,7 @@ def update_graph(filter_click, plot_click, plot_timestamp, tree_click, tree_time
         
         return fig
     
-    def create_plot(compiled_df, currency_code):
+    def create_plot(compiled_df):
         
         compiled_df = create_total_col(compiled_df, 'balance')
     
@@ -247,28 +247,32 @@ def update_graph(filter_click, plot_click, plot_timestamp, tree_click, tree_time
         
         return fig    
     
+    def create_map(compiled_df):
+        
+        comp
+    
     if trigger_button == 'tree-graph-button':
-        return create_treemap(compiled_df, currency_code)
+        return create_treemap(compiled_df)
     
     elif trigger_button == 'filter-button':
         
         if tree_timestamp == None and plot_timestamp == None:
-            return create_plot(compiled_df, currency_code)
+            return create_plot(compiled_df)
         
         elif tree_timestamp == None or plot_timestamp == None:
             if tree_timestamp:
-                return create_treemap(compiled_df, currency_code)
+                return create_treemap(compiled_df)
             else:
-                return create_plot(compiled_df, currency_code)
+                return create_plot(compiled_df)
         
         elif tree_timestamp > plot_timestamp:
-            return create_treemap(compiled_df, currency_code)
+            return create_treemap(compiled_df)
         
         else:
-            return create_plot(compiled_df, currency_code)
+            return create_plot(compiled_df)
         
     else:
-        return create_plot(compiled_df, currency_code)
+        return create_plot(compiled_df)
     
 
 @app.callback(

@@ -16,7 +16,7 @@ from app import app
 with open('config.yml') as file:
     config = yaml.load(file, Loader=yaml.FullLoader)
 
-client = Client(db_path=config['database']['file_path']) 
+client = Client(**config['database']) 
 
 accounts = client.accounts.list()
 account_options = [{'label':account.name, 'value':account.id} for account in accounts]

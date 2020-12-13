@@ -3,12 +3,14 @@ import dash_html_components as html
 import dash_core_components as dcc
 import yaml
 from dash.dependencies import State, Input, Output
-
 from app import app
 from apps import test_app, explore, analyze
 
 with open('config.yml') as file:
     config = yaml.load(file, Loader=yaml.FullLoader)
+    
+with open('secrets.yml') as file:
+    users = yaml.load(file, Loader=yaml.FullLoader)['users']
 
 ### NAVBAR ###
 
@@ -40,6 +42,7 @@ app.layout = html.Div([
     dcc.Location(id='url', refresh=False),
     html.Div(id='page-content')
 ])
+
 
 @app.callback(
     Output('page-content', 'children'),
