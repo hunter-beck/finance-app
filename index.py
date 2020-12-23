@@ -5,12 +5,15 @@ import yaml
 from dash.dependencies import State, Input, Output
 from app import app
 from apps import test_app, explore, analyze
+from finance.client import Client  
 
 with open('config.yml') as file:
     config = yaml.load(file, Loader=yaml.FullLoader)
     
 with open('secrets.yml') as file:
     users = yaml.load(file, Loader=yaml.FullLoader)['users']
+    
+client = Client(**config['database']) 
 
 ### NAVBAR ###
 
@@ -37,10 +40,30 @@ navbar = dbc.NavbarSimple(
     fluid=True
 )
 
+### CROSS PAGE STORAGE ###
+
+record_store = dcc.Store(
+    id='master-records-store', 
+    data=client.records.list().to_pandas().to_json()
+)
+
+label_store = dcc.Store(
+    id='master-labels-store', 
+    data=client.labels.list().to_pandas().to_json()
+)
+
+accounts_store = dcc.Store(
+    id='master-accounts-store', 
+    data=client.accounts.list().to_pandas().to_json()
+)
+
 app.layout = html.Div([
     navbar,
     dcc.Location(id='url', refresh=False),
-    html.Div(id='page-content')
+    html.Div(id='page-content'),
+    record_store,
+    label_store,
+    accounts_store
 ])
 
 
@@ -57,8 +80,7 @@ def display_page(pathname):
     elif pathname == '/analyze':
         return analyze.layout
     else:
-        return '404'
-        
+        return '404'        
 
 if __name__ == "__main__":
     app.run_server(debug=True, port=config['app']['port'], host=config['app']['host'])
