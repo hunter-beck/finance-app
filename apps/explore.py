@@ -11,6 +11,8 @@ from finance.client.data_classes.accounts import Account
 from finance.client.data_classes.records import Record
 from finance.client.data_classes.labels import Label
 import pandas as pd
+from operator import itemgetter 
+import json
 
 from app import app
 
@@ -95,7 +97,7 @@ side_bar = html.Div(
 records_df = client.records.list().to_pandas()
 
 table_placeholder = dash_table.DataTable(
-    id='table',
+    id='view-table',
     style_as_list_view=True,
     page_size=20,
     row_selectable='multi'
@@ -275,19 +277,42 @@ create_record_modal = dbc.Modal(
 
 delete_button = dbc.Button("Delete", id='delete-button', color='danger')
 
+delete_table = dash_table.DataTable(
+    id='delete-table',
+    style_as_list_view=True,
+    page_size=5,
+    row_selectable='multi'
+)
+
 delete_modal = dbc.Modal(
     [
-        dbc.ModalBody(html.Div('Confirm deletion of the following items:')),
+        dbc.ModalBody(
+            [
+                html.Div('Confirm deletion of the following items:', className='mb-2'),
+                delete_table
+            ],
+            className='m-2'
+        ),
         dbc.ModalFooter(
             [   
                 dbc.Button(
-                    "Delete", id="create-records-button", **MODAL_CREATE_BUTTON_STYLE
+                    "Delete", id="confirm-delete-button", **MODAL_CREATE_BUTTON_STYLE
                 )
             ]
         ),
     ],
     id="delete-modal",
     centered=True,
+)
+
+delete_not_selected_alert = dbc.Alert(
+    "No items selected for deletion. Check boxes below.", 
+    id='delete-alert', 
+    color="warning",
+    duration=10000,
+    dismissable=True,
+    className='m-2',
+    is_open=False
 )
 
 ### BODY ###
@@ -319,10 +344,12 @@ body = html.Div(
 temp_val_store = dcc.Store(id='temp-val-store')
 data_type_store = dcc.Store(id='data-type-store')
 
+
 ### LAYOUT ###
 layout = html.Div([
-    data_type_store, 
+    data_type_store,
     create_account_modal, create_label_modal, create_record_modal, delete_modal,
+    delete_not_selected_alert,
     body
 ])
 
@@ -354,9 +381,9 @@ layout = html.Div([
      State('create-record-date-input', 'date'),
      State("master-records-store","data"),
      State("master-labels-store","data"),
-     State("master-accounts-store","data")],
+     State("master-accounts-store","data")]
 )
-def create_modal(create_n, create_account_n, create_label_n, create_record_n,
+def createModal(create_n, create_account_n, create_label_n, create_record_n,
                 data_type_store, account_is_open, label_is_open, record_is_open,
                 account_name, account_description, account_label, account_country, 
                 label_name, label_description,
@@ -365,7 +392,7 @@ def create_modal(create_n, create_account_n, create_label_n, create_record_n,
     
     ctx = callback_context
     trigger_button = ctx.triggered[0]['prop_id'].split('.')[0]
-        
+
     if data_type_store == 'accounts':
         updated_accounts = current_accounts_store
         
@@ -419,20 +446,65 @@ def create_modal(create_n, create_account_n, create_label_n, create_record_n,
         
         
 @app.callback(
-    Output('delete-modal','is_open'),
-    [Input('delete-button','n_clicks')],
-    [State('delete-modal','is_open')]
+    [Output('delete-modal','is_open'),
+     Output('delete-table','columns'),
+     Output('delete-table','data'),
+     Output('delete-table', 'selected_rows'),
+     Output('delete-alert', 'is_open')],
+    [Input('delete-button','n_clicks'),
+     Input('confirm-delete-button', 'n_clicks')],
+    [State('delete-modal','is_open'),
+     State('data-type-store', 'data'),
+     State('view-table', 'data'),
+     State('view-table', 'columns'),
+     State('view-table', 'selected_rows'),
+     State("master-records-store","data"),
+     State("master-labels-store","data"),
+     State("master-accounts-store","data"),
+     State('delete-table', 'selected_rows'),
+     State('delete-table', 'data'),
+     State('delete-table', 'columns')]
 )
-def delete_modal(delete_clicks, modal_state):
+def deleteModal(delete_clicks, confirm_delete_clicks, 
+                modal_is_open, data_type, view_table_data, view_table_columns, view_table_selected_rows,
+                current_records_store, current_labels_store, current_accounts_store, 
+                delete_table_selected_rows, delete_table_data, delete_table_columns):
     
-    return not modal_state
+    if view_table_selected_rows and not modal_is_open:
+        
+        delete_table_data = itemgetter(*view_table_selected_rows)(view_table_data)
+        if type(delete_table_data) == dict:
+            delete_table_data = [delete_table_data]
+            
+        return True, view_table_columns, delete_table_data, [], False
+            
+    elif delete_table_selected_rows and modal_is_open:
+        selected_delete_data = itemgetter(*delete_table_selected_rows)(delete_table_data)
+
+        if type(selected_delete_data) == dict:
+            selected_delete_data = [selected_delete_data]
+        
+        delete_ids = [obj['id'] for obj in selected_delete_data]
+        
+        getattr(client, data_type).delete(ids=delete_ids)
+        
+        return False, delete_table_columns, delete_table_data, [], False
+
+    elif delete_clicks and not delete_table_selected_rows:
+                
+        return False, None, None, [], True
+
+    else:
+        
+        raise PreventUpdate
 
     
 @app.callback(
-    [Output('table', 'columns'),
-     Output('table', 'data'),
+    [Output('view-table', 'columns'),
+     Output('view-table', 'data'),
      Output('sidebar-content', 'children'),
-     Output('data-type-store', 'data')],
+     Output('data-type-store', 'data'),
+     Output('view-table', 'selected_rows')],
     [Input('accounts-button', 'n_clicks'),
      Input('records-button', 'n_clicks'),
      Input('labels-button', 'n_clicks'),
@@ -441,28 +513,52 @@ def delete_modal(delete_clicks, modal_state):
      Input("create-records-button", "n_clicks")],
     [State("master-records-store","data"),
      State("master-labels-store","data"),
-     State("master-accounts-store","data")]  
+     State("master-accounts-store","data"),
+     State('data-type-store', 'data'),
+     State('view-table', 'selected_rows')]  
 )
 def resource_type_selection(account_n, record_n, label_n, 
     create_account_n, create_label_n, create_record_n,
-    records_store, labels_store, accounts_store):
+    records_store, labels_store, accounts_store, prev_data_type, view_table_selected_rows):
     
     ctx = callback_context
     trigger_button = ctx.triggered[0]['prop_id'].split('.')[0]
 
     if 'accounts' in trigger_button:
+        
+        if 'accounts' == prev_data_type:
+            selected_rows = view_table_selected_rows
+        else:
+            selected_rows = []
+        
         accounts_df = pd.read_json(accounts_store)
         data, columns = table_data_columns_formatter(accounts_df)
-        return columns, data, account_filter_form, 'accounts'
+        return columns, data, account_filter_form, 'accounts', selected_rows
+    
     elif 'records' in trigger_button:
+        
+        if 'records' == prev_data_type:
+            selected_rows = view_table_selected_rows
+        else:
+            selected_rows = []
+        
         records_df = pd.read_json(records_store)
         data, columns = table_data_columns_formatter(records_df)
-        return columns, data, record_filter_form, 'records'
+        return columns, data, record_filter_form, 'records', selected_rows
+    
     elif 'labels' in trigger_button:
+        
+        if 'labels' == prev_data_type:
+            selected_rows = view_table_selected_rows
+        else:
+            selected_rows = []
+        
         labels_df = pd.read_json(labels_store)
         data, columns = table_data_columns_formatter(labels_df)
-        return columns, data, label_filter_form, 'labels'
+        return columns, data, label_filter_form, 'labels', selected_rows
+    
     else:
+        
         raise PreventUpdate
     
 
