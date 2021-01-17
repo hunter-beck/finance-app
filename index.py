@@ -10,9 +10,6 @@ from finance.client import Client
 with open('config.yml') as file:
     config = yaml.load(file, Loader=yaml.FullLoader)
     
-with open('secrets.yml') as file:
-    users = yaml.load(file, Loader=yaml.FullLoader)['users']
-    
 client = Client(**config['database']) 
 
 ### NAVBAR ###
