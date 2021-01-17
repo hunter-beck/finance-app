@@ -13,7 +13,8 @@ from finance.client.data_classes.labels import Label
 import pandas as pd
 from operator import itemgetter 
 import json
-
+from lib import auto_retrieve_account_data
+from time import sleep
 from app import app
 
 with open('config.yml') as file:
@@ -42,6 +43,18 @@ data_type_buttons = dbc.ButtonGroup(
     ],
     className='mb-3'
 )
+
+### AUTO RETRIEVE ###
+auto_retrieve_button = dbc.Button("Auto Retrieve", id='auto-retrieve-button', color='primary', className='mr-2')
+
+auto_retrieve_success_alert = dbc.Alert(
+    id='auto-retrieve-alert', 
+    duration=10000,
+    dismissable=True,
+    className='m-2',
+    is_open=False
+)
+
 
 ### ACCOUNT SELECTION ###
 account_dropdown = dcc.Dropdown(
@@ -79,6 +92,7 @@ record_filter_form = dbc.Form(
         account_dropdown,
         date_range,
         label_dropdown, 
+        auto_retrieve_button
     ]
 )
 
@@ -100,7 +114,7 @@ table_placeholder = dash_table.DataTable(
     id='view-table',
     style_as_list_view=True,
     page_size=20,
-    row_selectable='multi'
+    row_selectable='multi',
 )
 
 ### MODAL STYLING ###
@@ -118,6 +132,9 @@ MODAL_CLOSE_BUTTON_STYLE = {
     'className':"mr-2",
     'color':'secondary'
 }
+
+### AUTO RETRIEVE ###
+auto_retrieve_button = dbc.Button("Auto Retrieve", id='auto-retrieve-button', color='primary', className='mr-2')
 
 ### CREATE MODALS ###
 
@@ -281,7 +298,7 @@ delete_table = dash_table.DataTable(
     id='delete-table',
     style_as_list_view=True,
     page_size=5,
-    row_selectable='multi'
+    row_selectable='multi',
 )
 
 delete_modal = dbc.Modal(
@@ -349,7 +366,7 @@ data_type_store = dcc.Store(id='data-type-store')
 layout = html.Div([
     data_type_store,
     create_account_modal, create_label_modal, create_record_modal, delete_modal,
-    delete_not_selected_alert,
+    delete_not_selected_alert, auto_retrieve_success_alert,
     body
 ])
 
@@ -403,7 +420,7 @@ def createModal(create_n, create_account_n, create_label_n, create_record_n,
                 country_code=account_country
             )
             client.accounts.create([new_account])
-            
+            sleep(1)
             updated_accounts = client.accounts.list().to_pandas().to_json()
             
         return not account_is_open, label_is_open, record_is_open, \
@@ -418,7 +435,7 @@ def createModal(create_n, create_account_n, create_label_n, create_record_n,
                 description=label_description,
             )
             client.labels.create([new_label])
-            
+            sleep(1)
             updated_labels = client.labels.list().to_pandas().to_json()
             
         return account_is_open, not label_is_open, record_is_open, \
@@ -435,7 +452,7 @@ def createModal(create_n, create_account_n, create_label_n, create_record_n,
                 date=record_date
             )
             client.records.create([new_record])
-            
+            sleep(1)
             updated_records = client.records.list().to_pandas().to_json()
             
         return account_is_open, label_is_open, not record_is_open, \
@@ -502,6 +519,8 @@ def deleteModal(delete_clicks, confirm_delete_clicks,
 @app.callback(
     [Output('view-table', 'columns'),
      Output('view-table', 'data'),
+     Output('view-table', 'filter_action'),
+     Output('view-table', 'sort_action'),
      Output('sidebar-content', 'children'),
      Output('data-type-store', 'data'),
      Output('view-table', 'selected_rows')],
@@ -533,7 +552,7 @@ def resource_type_selection(account_n, record_n, label_n,
         
         accounts_df = pd.read_json(accounts_store)
         data, columns = table_data_columns_formatter(accounts_df)
-        return columns, data, account_filter_form, 'accounts', selected_rows
+        return columns, data, 'native', 'native', account_filter_form, 'accounts', selected_rows
     
     elif 'records' in trigger_button:
         
@@ -544,7 +563,7 @@ def resource_type_selection(account_n, record_n, label_n,
         
         records_df = pd.read_json(records_store)
         data, columns = table_data_columns_formatter(records_df)
-        return columns, data, record_filter_form, 'records', selected_rows
+        return columns, data, 'native', 'native', record_filter_form, 'records', selected_rows
     
     elif 'labels' in trigger_button:
         
@@ -555,12 +574,43 @@ def resource_type_selection(account_n, record_n, label_n,
         
         labels_df = pd.read_json(labels_store)
         data, columns = table_data_columns_formatter(labels_df)
-        return columns, data, label_filter_form, 'labels', selected_rows
+        return columns, data, 'native', 'native', label_filter_form, 'labels', selected_rows
     
     else:
         
         raise PreventUpdate
     
+
+@app.callback(
+    [Output('auto-retrieve-alert','children'),
+     Output('auto-retrieve-alert','color'),
+     Output('auto-retrieve-alert','is_open')],
+    [Input('auto-retrieve-button','n_clicks')]
+)
+def auto_retrieve(n):
+    
+    if not n:
+        raise PreventUpdate
+    
+    try:
+        balances = auto_retrieve_account_data(config['auto_retrieve'])
+    except Exception as e:
+        return f'FAILED: {e}', 'danger', True
+    
+    for balance in balances:
+        res = client.records.create([
+            Record(
+                date= balance['datetime'],
+                account_id= balance['db_account_id'],
+                balance= balance['balance'],
+                currency= balance['currency']
+            )
+        ])
+    
+    account_names = [accounts.retrieve(ids=[balance['db_account_id']])[0].name for balance in balances]
+    success_message = f"Succesfully updated balances for: {account_names}"
+    
+    return success_message, 'success', True
 
 def table_data_columns_formatter(df):
     data=df.to_dict('records')
